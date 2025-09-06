@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Album Ranker</title>
+  <meta name="description" content="Drag-and-drop album ranking with search, export, and Firebase save/load." />
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --panel:#111827ee; /* gray-900 */
+      --muted:#94a3b8; /* slate-400 */
+      --muted-2:#64748b; /* slate-500 */
+      --text:#e5e7eb; /* gray-200 */
+      --accent:#22c55e; /* green-500 */
+      --accent-2:#38bdf8; /* sky-400 */
+      --danger:#ef4444; /* red-500 */
+      --card:#0b1227; /* bluish */
+      --ring:#334155; /* slate-700 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:radial-gradient(1200px 600px at 20% -10%, #1e293b, #0b1020 40%, #050814 70%), var(--bg);color:var(--text);font-family:ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";}
+    a{color:var(--accent-2)}
+    .container{max-width:1000px;margin:0 auto;padding:20px}
+
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.3px}
+    .chip{border:1px solid var(--ring);background:linear-gradient(180deg, #0b1227, #0a1124);padding:6px 10px;border-radius:999px;color:var(--muted);font-size:12px}
+
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .toolbar .field{display:flex;align-items:center;gap:8px;background:var(--panel);padding:8px 10px;border-radius:10px;border:1px solid var(--ring)}
+    .toolbar input[type="text"]{background:transparent;border:none;outline:none;color:#fff;min-width:180px}
+    .toolbar button{background:#0b1227;border:1px solid var(--ring);color:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+    .toolbar button.primary{background:linear-gradient(180deg, #16a34a, #15803d);border-color:#14532d}
+    .toolbar button:hover{filter:brightness(1.08)}
+
+    .stats{display:flex;gap:10px;align-items:center;color:var(--muted)}
+
+    .grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+
+    .item{display:grid;grid-template-columns:44px 64px 1fr 120px;align-items:center;gap:12px;background:linear-gradient(180deg, #0f172a, #0b1227);border:1px solid var(--ring);border-radius:14px;padding:8px 10px;position:relative}
+    .item.dragging{opacity:.7;transform:scale(.99)}
+    .rank-badge{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:#111827;border:1px solid var(--ring);font-weight:700;color:#d1d5db}
+    .cover{width:64px;height:64px;border-radius:12px;overflow:hidden;border:1px solid var(--ring);background:#0a0f22}
+    .cover img{width:100%;height:100%;object-fit:cover;display:block}
+    .meta{display:flex;flex-direction:column;min-width:0}
+    .title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .artist{font-size:12px;color:var(--muted)}
+    .controls{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+    .controls input[type="number"]{width:64px;background:#0b1227;color:#fff;border:1px solid var(--ring);border-radius:10px;padding:6px}
+    .icon-btn{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--ring);background:#0b1227;color:#cbd5e1;cursor:pointer}
+    .icon-btn:hover{filter:brightness(1.1)}
+    .drag-hint{position:absolute;inset:0;border-radius:14px;outline:2px dashed transparent}
+
+    .empty{border:1px dashed var(--ring);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}
+
+    footer{display:flex;justify-content:space-between;align-items:center;margin:20px 0}
+
+    /* Modal */
+    dialog, .modal{border:none;border-radius:14px;padding:0;background:transparent}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+    .modal-backdrop.show{display:flex}
+    .modal-card{width:min(900px,95vw);background:linear-gradient(180deg, #0f172a, #0b1227);border:1px solid var(--ring);border-radius:14px;overflow:hidden}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--ring)}
+    .modal-title{font-weight:700}
+    .modal-body{padding:14px 16px}
+    .modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 16px;border-top:1px solid var(--ring)}
+
+    .tabs{display:flex;gap:6px;margin-bottom:10px}
+    .tab{padding:8px 10px;border-radius:10px;border:1px solid var(--ring);background:#0b1227;cursor:pointer;color:#cbd5e1}
+    .tab.active{background:linear-gradient(180deg,#1e293b,#0b1227)}
+
+    .search-area{display:flex;gap:8px;margin-bottom:12px}
+    .search-area input{flex:1;background:#0b1227;color:#fff;border:1px solid var(--ring);border-radius:10px;padding:10px}
+
+    .results{display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:12px}
+    .result{border:1px solid var(--ring);background:linear-gradient(180deg,#0f172a,#0b1227);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+    .result img{width:100%;aspect-ratio:1/1;object-fit:cover}
+    .result .info{padding:10px;display:flex;flex-direction:column;gap:6px}
+    .result .name{font-weight:700;font-size:14px;line-height:1.1}
+    .result .by{color:var(--muted);font-size:12px}
+    .result button{margin:10px;border:1px solid var(--ring);background:#0b1227;color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+
+    .form{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+    .form label{font-size:12px;color:var(--muted)}
+    .form input{width:100%;background:#0b1227;color:#fff;border:1px solid var(--ring);border-radius:10px;padding:10px}
+
+    .badge{font-size:12px;color:#a5b4fc;background:#111827;border:1px solid var(--ring);padding:6px 8px;border-radius:999px}
+    .status{display:flex;align-items:center;gap:8px;color:var(--muted)}
+    .status .dot{width:8px;height:8px;border-radius:999px;background:#334155}
+    .status .dot.ok{background:#22c55e}
+    .status .dot.warn{background:#f59e0b}
+    .status .dot.err{background:#ef4444}
+
+    @media (max-width:640px){
+      .item{grid-template-columns:36px 56px 1fr 96px}
+      .controls input[type="number"]{width:56px}
+      .toolbar input[type="text"]{min-width:120px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L12 14.77 6.22 16.7l.91-5.31L3.27 7.62l5.34-.78L12 2z" stroke="#38bdf8" fill="none" stroke-width="1.25"/></svg>
+        <h1>Album Ranker</h1>
+        <span class="chip">Drag • Rank • Export</span>
+      </div>
+      <div class="toolbar" role="group" aria-label="Session controls">
+        <div class="field" title="Your ranking name (used to load/save)">
+          <span class="badge">Name</span>
+          <input id="userName" type="text" placeholder="e.g. lekh-2025-faves" />
+          <button id="loadBtn" title="Load or create this ranking">Load</button>
+        </div>
+        <button id="addBtn" class="primary" title="Add album (+)">+ Add Album</button>
+        <div class="status" title="Save status">
+          <span id="saveDot" class="dot"></span>
+          <span id="saveText">Not connected</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="stats">
+      <span id="countBadge" class="badge">0 albums</span>
+      <span class="badge" title="Tip: drag items or type a rank to jump">Tip: drag or type rank</span>
+    </div>
+
+    <div id="listWrap">
+      <div id="emptyState" class="empty">No albums yet. Click <b>+ Add Album</b> to search iTunes or add manually.</div>
+      <ul id="list" class="grid" aria-live="polite"></ul>
+    </div>
+
+    <footer>
+      <div>
+        <button id="exportBtn" title="Export as .txt">Export .txt</button>
+        <button id="clearBtn" title="Remove all">Clear</button>
+      </div>
+      <div style="color:var(--muted);font-size:12px">Search powered by the public iTunes Search API.</div>
+    </footer>
+  </div>
+
+  <!-- Add Modal -->
+  <div id="addModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title" id="addTitle">Add Albums</div>
+        <button id="closeModal" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button id="tabSearch" class="tab active">Search</button>
+          <button id="tabManual" class="tab">Manual</button>
+        </div>
+
+        <section id="paneSearch">
+          <div class="search-area">
+            <input id="searchInput" type="search" placeholder="Search album or artist (iTunes API)" />
+            <button id="searchBtn">Search</button>
+          </div>
+          <div id="results" class="results" aria-live="polite"></div>
+        </section>
+
+        <section id="paneManual" style="display:none">
+          <div class="form">
+            <div>
+              <label for="mTitle">Album Title</label>
+              <input id="mTitle" type="text" placeholder="Album title" />
+            </div>
+            <div>
+              <label for="mArtist">Artist</label>
+              <input id="mArtist" type="text" placeholder="Artist name" />
+            </div>
+            <div style="grid-column:1/-1">
+              <label for="mCover">Cover Image URL (optional)</label>
+              <input id="mCover" type="url" placeholder="https://example.com/cover.jpg" />
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button id="addManualBtn" class="primary">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="itemTemplate">
+    <li class="item" draggable="true">
+      <div class="rank-badge" aria-label="Rank">1</div>
+      <div class="cover"><img alt="Album cover" /></div>
+      <div class="meta">
+        <div class="title">Album Title</div>
+        <div class="artist">Artist</div>
+      </div>
+      <div class="controls">
+        <input class="rankInput" type="number" min="1" value="1" title="Jump to rank" />
+        <button class="icon-btn delBtn" title="Remove">🗑</button>
+      </div>
+      <div class="drag-hint" title="Drag to reorder" aria-hidden="true"></div>
+    </li>
+  </template>
+
+  <script type="module">
+    // --- Configuration (Edit this with your Firebase config) ---
+    // 1) In Firebase Console, open your existing project (recommended) → Project settings → "Your apps" → add a Web app.
+    // 2) Copy the config object and paste it below.
+    // 3) Ensure Firestore is enabled (or swap to Realtime DB if you prefer) and set permissive rules if you truly want no auth.
+
+    const FIREBASE_CONFIG = {
+      // TODO: paste your config here. Example:
+      // apiKey: "...",
+      // authDomain: "your-project.firebaseapp.com",
+      // projectId: "your-project",
+      // storageBucket: "your-project.appspot.com",
+      // messagingSenderId: "...",
+      // appId: "..."
+    };
+
+    // --- Firebase (optional; gracefully degrades to localStorage only) ---
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+    let app = null, db = null, firebaseReady = false;
+    try {
+      if (FIREBASE_CONFIG && FIREBASE_CONFIG.projectId) {
+        app = initializeApp(FIREBASE_CONFIG);
+        db = getFirestore(app);
+        firebaseReady = true;
+        setStatus('Connected', 'ok');
+      } else {
+        setStatus('Not connected', 'warn');
+      }
+    } catch (e) {
+      console.error('Firebase init error', e);
+      setStatus('Firebase error', 'err');
+    }
+
+    // --- DOM refs ---
+    const list = document.getElementById('list');
+    const countBadge = document.getElementById('countBadge');
+    const addBtn = document.getElementById('addBtn');
+    const addModal = document.getElementById('addModal');
+    const closeModal = document.getElementById('closeModal');
+    const tabSearch = document.getElementById('tabSearch');
+    const tabManual = document.getElementById('tabManual');
+    const paneSearch = document.getElementById('paneSearch');
+    const paneManual = document.getElementById('paneManual');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const results = document.getElementById('results');
+    const mTitle = document.getElementById('mTitle');
+    const mArtist = document.getElementById('mArtist');
+    const mCover = document.getElementById('mCover');
+    const addManualBtn = document.getElementById('addManualBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const emptyState = document.getElementById('emptyState');
+    const userName = document.getElementById('userName');
+    const loadBtn = document.getElementById('loadBtn');
+
+    const saveDot = document.getElementById('saveDot');
+    const saveText = document.getElementById('saveText');
+
+    let currentUser = '';
+    let saveTimer = null;
+
+    // --- Helpers ---
+    function setStatus(text, mode=''){
+      saveText.textContent = text;
+      saveDot.className = 'dot' + (mode ? ' ' + mode : '');
+    }
+
+    function sanitizeName(n=''){
+      return n.trim().replace(/[\/\n\r\t]/g,'_').slice(0,64);
+    }
+
+    function getItems(){
+      return Array.from(list.querySelectorAll('.item')).map(el => ({
+        title: el.querySelector('.title').textContent,
+        artist: el.querySelector('.artist').textContent,
+        cover: el.querySelector('img').src || ''
+      }));
+    }
+
+    function setItems(items){
+      list.innerHTML = '';
+      items.forEach(it => addItem(it.title, it.artist, it.cover));
+      refresh();
+    }
+
+    function refresh(){
+      const items = list.querySelectorAll('.item');
+      items.forEach((el, i) => {
+        el.querySelector('.rank-badge').textContent = i+1;
+        el.querySelector('.rankInput').value = i+1;
+      });
+      countBadge.textContent = `${items.length} ${items.length===1 ? 'album' : 'albums'}`;
+      emptyState.style.display = items.length ? 'none' : 'block';
+      scheduleSave();
+    }
+
+    function scheduleSave(){
+      setStatus(firebaseReady ? 'Saving…' : 'Local only', firebaseReady ? '' : 'warn');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 700);
+    }
+
+    async function save(){
+      const name = currentUser;
+      if (!name) return;
+      const payload = { items: getItems(), updatedAt: Date.now() };
+      // local backup
+      localStorage.setItem(`rankings:${name}`, JSON.stringify(payload));
+      if (!firebaseReady) { setStatus('Saved locally', 'warn'); return; }
+      try{
+        await setDoc(doc(db, 'rankings', name), { ...payload, updatedAt: serverTimestamp() });
+        setStatus('Saved', 'ok');
+      }catch(err){
+        console.error(err); setStatus('Save failed', 'err');
+      }
+    }
+
+    async function load(name){
+      const key = `rankings:${name}`;
+      let data = null;
+      // Try Firebase first
+      if (firebaseReady){
+        try{
+          const snap = await getDoc(doc(db,'rankings', name));
+          if (snap.exists()) data = snap.data();
+        }catch(err){ console.warn('Load from Firebase failed', err); }
+      }
+      // Fallback to localStorage
+      if (!data){
+        const raw = localStorage.getItem(key);
+        if (raw) data = JSON.parse(raw);
+      }
+      if (data && Array.isArray(data.items)){
+        setItems(data.items);
+      } else {
+        setItems([]);
+      }
+      setStatus(firebaseReady ? 'Loaded' : 'Loaded (local)', firebaseReady ? 'ok' : 'warn');
+    }
+
+    function addItem(title, artist, cover){
+      const tpl = document.getElementById('itemTemplate');
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.querySelector('.title').textContent = title || 'Untitled';
+      node.querySelector('.artist').textContent = artist || 'Unknown';
+      node.querySelector('img').src = cover || placeholderCover(title, artist);
+
+      // Delete
+      node.querySelector('.delBtn').addEventListener('click', () => {
+        node.remove(); refresh();
+      });
+
+      // Rank input jump
+      node.querySelector('.rankInput').addEventListener('change', (e) => {
+        const n = parseInt(e.target.value, 10);
+        const items = Array.from(list.children);
+        const from = items.indexOf(node);
+        let to = Number.isFinite(n) ? Math.max(1, Math.min(n, items.length)) - 1 : from;
+        if (to !== from){
+          list.insertBefore(node, list.children[to + (to>from?1:0)]);
+          refresh();
+        } else { refresh(); }
+      });
+
+      // Drag & drop
+      node.addEventListener('dragstart', (e) => {
+        node.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', '');
+      });
+      node.addEventListener('dragend', () => node.classList.remove('dragging'));
+
+      list.appendChild(node);
+      refresh();
+    }
+
+    // Drag-over logic on the list (insertion by vertical center)
+    list.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = list.querySelector('.dragging');
+      if (!dragging) return;
+      const after = getDragAfterElement(list, e.clientY);
+      if (after == null){
+        list.appendChild(dragging);
+      } else {
+        list.insertBefore(dragging, after);
+      }
+    });
+
+    function getDragAfterElement(container, y){
+      const els = [...container.querySelectorAll('.item:not(.dragging)')];
+      let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+      for (const el of els){
+        const box = el.getBoundingClientRect();
+        const offset = y - (box.top + box.height/2);
+        if (offset < 0 && offset > closest.offset){
+          closest = { offset, element: el };
+        }
+      }
+      return closest.element;
+    }
+
+    function placeholderCover(title, artist){
+      const text = encodeURIComponent((title||'Album').slice(0,20));
+      const by = encodeURIComponent((artist||'Artist').slice(0,20));
+      // Simple placeholder via data URL (so no external calls required)
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>\
+        <rect width='100%' height='100%' fill='#0b1227'/>\
+        <text x='50%' y='45%' font-size='40' fill='#cbd5e1' text-anchor='middle' font-family='sans-serif'>${text}</text>\
+        <text x='50%' y='58%' font-size='24' fill='#94a3b8' text-anchor='middle' font-family='sans-serif'>${by}</text>\
+      </svg>`;
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+
+    // --- UI wiring ---
+    addBtn.addEventListener('click', () => addModal.classList.add('show'));
+    closeModal.addEventListener('click', () => addModal.classList.remove('show'));
+    addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.classList.remove('show'); });
+
+    // Tabs
+    tabSearch.addEventListener('click', () => {
+      tabSearch.classList.add('active'); tabManual.classList.remove('active');
+      paneSearch.style.display='block'; paneManual.style.display='none';
+    });
+    tabManual.addEventListener('click', () => {
+      tabManual.classList.add('active'); tabSearch.classList.remove('active');
+      paneManual.style.display='block'; paneSearch.style.display='none';
+    });
+
+    // Search via iTunes API (no key required)
+    async function doSearch(){
+      const term = searchInput.value.trim();
+      if (!term) return;
+      results.innerHTML = '<div class="badge">Searching…</div>';
+      try{
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=30`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const albums = data.results || [];
+        if (!albums.length){ results.innerHTML = '<div class="badge">No results</div>'; return; }
+        results.innerHTML = '';
+        for (const a of albums){
+          const cover = (a.artworkUrl100 || '').replace('100x100bb','600x600bb');
+          const card = document.createElement('div');
+          card.className = 'result';
+          card.innerHTML = `
+            <img alt="${a.collectionName || ''}" src="${cover}">
+            <div class="info">
+              <div class="name" title="${a.collectionName}">${a.collectionName}</div>
+              <div class="by">${a.artistName}</div>
+            </div>
+            <button>Add</button>
+          `;
+          card.querySelector('button').addEventListener('click', () => {
+            addItem(a.collectionName, a.artistName, cover);
+          });
+          results.appendChild(card);
+        }
+      }catch(err){
+        console.error(err);
+        results.innerHTML = '<div class="badge">Search failed</div>';
+      }
+    }
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ doSearch(); }});
+
+    // Manual add
+    addManualBtn.addEventListener('click', () => {
+      addItem(mTitle.value.trim(), mArtist.value.trim(), mCover.value.trim());
+      mTitle.value=''; mArtist.value=''; mCover.value='';
+    });
+
+    // Export as .txt
+    exportBtn.addEventListener('click', () => {
+      const items = getItems();
+      if (!items.length) return;
+      const lines = items.map((it, i) => `${i+1}. ${it.title} — ${it.artist}`);
+      const content = `Ranking: ${currentUser || 'unnamed'}\n\n` + lines.join('\n') + '\n';
+      const blob = new Blob([content], {type:'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
+      a.href = url;
+      a.download = `ranking-${(currentUser||'unnamed')}-${stamp}.txt`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // Clear
+    clearBtn.addEventListener('click', () => {
+      if (!confirm('Clear all albums?')) return;
+      list.innerHTML = ''; refresh();
+    });
+
+    // Load by name
+    loadBtn.addEventListener('click', async () => {
+      const name = sanitizeName(userName.value);
+      if (!name) { alert('Please enter a name'); return; }
+      currentUser = name;
+      history.replaceState(null, '', `${location.pathname}?u=${encodeURIComponent(name)}`);
+      await load(name);
+    });
+
+    // Auto-load from ?u= query or prompt once
+    (function init(){
+      const params = new URLSearchParams(location.search);
+      const u = sanitizeName(params.get('u')||'');
+      if (u){ userName.value = u; currentUser = u; load(u); }
+      else {
+        setTimeout(()=>{
+          const n = prompt('Enter a name for your ranking (used to load/save):','');
+          if (n){ const s = sanitizeName(n); userName.value=s; currentUser=s; history.replaceState(null,'',`?u=${encodeURIComponent(s)}`); load(s); }
+        }, 200);
+      }
+    })();
+
+  </script>
+</body>
+</html>
